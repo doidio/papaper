@@ -14,5 +14,7 @@ papaper
 python 3.10 venv
 
 ```shell
-pip install flet scholarly sci-hub
+pip install --editable .
+python -m build -w
+python -m twine upload dist/*
 ```

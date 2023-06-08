@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project.urls]
+"Homepage" = "https://github.com/doidio/papaper"
+"Bug Tracker" = "https://github.com/doidio/papaper/issues"
+
+[project]
+name = "papaper"
+authors = [
+    { name = "doidio", email = "88172828@qq.com" },
+]
+description = "academic papers embedding database"
+readme = "README.md"
+#requires-implementation = ">=3.10"
+keywords = []
+license = { text = "MIT" }
+classifiers = [
+    "Programming Language :: Python :: 3",
+]
+dependencies = [
+    "flet",
+    "scholarly",
+    "sci-hub",
+    "milvus[client]",
+]
+dynamic = ["version"]
+
+[tool.setuptools.dynamic]
+version = { attr = "papaper.__version__" }
+
+[tool.setuptools.package-data]
+"*" = ["*"]
