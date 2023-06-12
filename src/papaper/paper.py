@@ -26,7 +26,7 @@ def main(message: dict, log_q: Queue):
         else:
             metadata = {}
 
-        log_q.put('initialize')
+        log_q.put('[PAPER] initialize')
         scihub = SciHub()
         scholar = scholarly.search_pubs(keyword, year_low=datetime.now().year - n_years, year_high=datetime.now().year)
 
@@ -35,7 +35,7 @@ def main(message: dict, log_q: Queue):
 
         while searched < n_papers:
             try:
-                log_q.put('search next')
+                log_q.put('[PAPER] search next')
                 paper = next(scholar)
                 scholar.pub_parser.fill(paper)
 
@@ -47,13 +47,13 @@ def main(message: dict, log_q: Queue):
                     metadata[pub_year] = {}
 
                 if title in metadata[pub_year]:
-                    log_q.put(f'skip {pub_year} {title}')
+                    log_q.put(f'[PAPER] skip {pub_year} {title}')
                     metadata[pub_year][title].update(paper.copy())
                 else:
                     metadata[pub_year][title] = paper.copy()
 
                     try:
-                        log_q.put(f'try download {pub_year} {title}')
+                        log_q.put(f'[PAPER] try download {pub_year} {title}')
                         url = scihub.search(paper['pub_url'])
                         os.makedirs(save_in / pub_year, exist_ok=True)
                         scihub.download(url, save_in / pub_year, filename + '.pdf')
@@ -62,17 +62,17 @@ def main(message: dict, log_q: Queue):
                         warnings.warn(f'SCIHUB {e}')
                         download = 'failed'
 
-                    log_q.put(f'try download {download}')
+                    log_q.put(f'[PAPER] try download {download}')
 
                     metadata[pub_year][title]['download'] = download
 
                 metadata_json.write_text(json.dumps(metadata, ensure_ascii=False, indent=4), encoding='utf-8')
 
                 searched = sum([len(metadata[_]) for _ in metadata])
-                log_q.put(f'{searched} / {n_papers}')
+                log_q.put(f'[PAPER] {searched} / {n_papers}')
             except Exception as e:
                 warnings.warn(f'SCHOLARLY {e}')
 
-        log_q.put(f'COMPLETE')
+        log_q.put(f'[PAPER] COMPLETE')
     except Exception as e:
-        log_q.put(f'ERROR: {e}')
+        log_q.put(f'[PAPER] ERROR: {e}')

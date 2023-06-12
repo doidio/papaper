@@ -1,34 +1,88 @@
-[build-system]
-requires = ["setuptools", "setuptools-scm"]
-build-backend = "setuptools.build_meta"
+# This project was generated with Unknown using template: https://github.com/beeware/briefcase-template@v0.3.14
+[tool.briefcase]
+project_name = "papaper"
+bundle = "com.doidio.papaper"
+version = "1.0.0"
+url = "https://github.com/doidio/papaper"
+license = "MIT license"
+author = "doidio"
+author_email = "88172828@qq.com"
 
-[project.urls]
-"Homepage" = "https://github.com/doidio/papaper"
-"Bug Tracker" = "https://github.com/doidio/papaper/issues"
-
-[project]
-name = "papaper"
-authors = [
-    { name = "doidio", email = "88172828@qq.com" },
-]
+[tool.briefcase.app.papaper]
+formal_name = "papaper"
 description = "academic papers embedding database"
-readme = "README.md"
-#requires-implementation = ">=3.10"
-keywords = []
-license = { text = "MIT" }
-classifiers = [
-    "Programming Language :: Python :: 3",
+long_description = """More details about the app should go here.
+"""
+icon = "src/papaper/resources/papaper"
+sources = [
+    "src/papaper",
 ]
-dependencies = [
+test_sources = [
+    "tests",
+]
+
+requires = [
     "flet",
     "scholarly",
     "sci-hub",
-    "milvus[client]",
+    "tika",
+    "milvus==2.2.8",
+    "pymilvus==2.2.8",
+    "openai",
 ]
-dynamic = ["version"]
+test_requires = [
+    "pytest",
+]
 
-[tool.setuptools.dynamic]
-version = { attr = "papaper.__version__" }
+[tool.briefcase.app.papaper.macOS]
+requires = [
+    "std-nslog~=1.0.0"
+]
 
-[tool.setuptools.package-data]
-"*" = ["*"]
+[tool.briefcase.app.papaper.linux]
+requires = [
+]
+
+[tool.briefcase.app.papaper.linux.system.debian]
+system_requires = [
+]
+
+system_runtime_requires = [
+]
+
+[tool.briefcase.app.papaper.linux.system.rhel]
+system_requires = [
+]
+
+system_runtime_requires = [
+]
+
+[tool.briefcase.app.papaper.linux.system.arch]
+system_requires = [
+]
+
+system_runtime_requires = [
+]
+
+[tool.briefcase.app.papaper.linux.appimage]
+manylinux = "manylinux2014"
+
+system_requires = [
+]
+linuxdeploy_plugins = []
+
+[tool.briefcase.app.papaper.linux.flatpak]
+
+[tool.briefcase.app.papaper.windows]
+requires = []
+
+# Mobile deployments
+[tool.briefcase.app.papaper.iOS]
+supported = false
+
+[tool.briefcase.app.papaper.android]
+supported = false
+
+# Web deployments
+[tool.briefcase.app.papaper.web]
+supported = false
