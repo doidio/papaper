@@ -12,7 +12,7 @@ from scihub.util.download import SciHub
 
 def main(message: dict, log_q: Queue):
     try:
-        save_in = message['save_in']
+        save_in = message['save']
         keyword = message['keyword']
         n_papers = message['n_papers']
         n_years = max(message['n_years'], 1) - 1

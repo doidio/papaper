@@ -3,7 +3,8 @@ import os
 from multiprocessing import Queue
 from pathlib import Path
 
-import openai
+# import openai
+from langchain.embeddings import HuggingFaceEmbeddings
 from milvus import default_server
 from pymilvus import connections, FieldSchema, CollectionSchema, DataType, Collection, utility
 from tika import parser
@@ -32,10 +33,10 @@ def parse_file(filename: str, min_size=2000):
     return content_list
 
 
-def embed(text: str):
-    embedding = openai.Embedding.create(input=[text], engine='text-embedding-ada-002')
-    embedding = embedding['data'][0]['embedding']
-    return embedding
+# def embed(text: str):
+#     embedding = openai.Embedding.create(input=[text], engine='text-embedding-ada-002')
+#     embedding = embedding['data'][0]['embedding']
+#     return embedding
 
 
 def init():
@@ -48,7 +49,7 @@ def init():
         FieldSchema(name='year', dtype=DataType.INT64, description='Paper year'),
         FieldSchema(name='title', dtype=DataType.VARCHAR, description='Paper title', max_length=200),
         FieldSchema(name='content', dtype=DataType.VARCHAR, description='Paper content', max_length=20000),
-        FieldSchema(name='embedding', dtype=DataType.FLOAT_VECTOR, description='Content embedding', dim=1536),
+        FieldSchema(name='embedding', dtype=DataType.FLOAT_VECTOR, description='Content embedding', dim=768),
     ]
     schema = CollectionSchema(fields=fields, description='Paper collection')
     collection = Collection(name='paper', schema=schema)
@@ -63,15 +64,15 @@ def init():
 
 def build(message: dict, log_q: Queue):
     try:
+        cache = message['cache']
         load = message['load']
-        openai.api_key = message['api_key'] if len(message['api_key']) else None
-        openai.api_base = message['api_base'] if len(message['api_base']) else None
-        openai.api_type = message['api_type'] if len(message['api_type']) else None
-        openai.api_version = message['api_version'] if len(message['api_version']) else None
 
         log_q.put('[EMBEDDING] initialize')
         connections.connect(host='127.0.0.1', port=default_server.listen_port)
         init()
+
+        embeddings = HuggingFaceEmbeddings(cache_folder=cache)
+        embed = embeddings.embed_query
 
         collection = Collection('paper')
         collection.load()
@@ -104,11 +105,8 @@ def build(message: dict, log_q: Queue):
 
 def search(message: dict, log_q: Queue):
     try:
+        cache = message['cache']
         text = message['text']
-        openai.api_key = message['api_key'] if len(message['api_key']) else None
-        openai.api_base = message['api_base'] if len(message['api_base']) else None
-        openai.api_type = message['api_type'] if len(message['api_type']) else None
-        openai.api_version = message['api_version'] if len(message['api_version']) else None
 
         log_q.put('[EMBEDDING] connect')
         connections.connect(host='127.0.0.1', port=default_server.listen_port)
@@ -116,6 +114,9 @@ def search(message: dict, log_q: Queue):
         collection = Collection('paper')
         collection.load()
         collection.flush()
+
+        embeddings = HuggingFaceEmbeddings(cache_folder=cache)
+        embed = embeddings.embed_query
 
         results = collection.search(
             data=[embed(text)],

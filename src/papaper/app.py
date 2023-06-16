@@ -1,3 +1,4 @@
+import atexit
 import json
 import os
 import threading
@@ -6,7 +7,7 @@ from pathlib import Path
 from queue import Empty
 
 import flet as ft
-import openai
+import psutil
 from milvus import default_server
 
 from papaper import paper, embedding
@@ -63,16 +64,17 @@ class App:
 
         def on_help(_):
             self.page.snack_bar = ft.SnackBar(ft.TextField(value='''
-1. 设置Save路径到你的存档目录，其中将会保存下载的论文和用于检索的向量数据库
-2. 数据库启动大约1分钟后才能用于构建和检索，更改Save路径之后必须Restart数据库服务
-3. 论文检索和下载不会消耗付费资源
-4. 论文数据库的构建和相似性检索需要使用text-embedding-ada-002模型，因此需要设置OpenAI相关选项
+1. 先确认当前网络可以访问https://scholar.google.com/
+2. 先确认已安装Java运行时https://www.java.com/download/
+3. 设置Save路径到你的存档目录，其中将会保存下载的论文和用于检索的向量数据库
+4. 数据库启动大约1分钟后才能用于构建和检索，更改Save路径之后必须Restart数据库服务
+5. 论文检索、下载、数据库构建、相似性搜索，都不会消耗付费资源
                     ''', read_only=True, multiline=True, border=ft.InputBorder.NONE, color='white'), duration=30000)
             self.page.snack_bar.open = True
             self.page.update()
 
         self.config_tab.controls.append(bar := ft.Row())
-        bar.controls.append(ft.ElevatedButton('Help', expand=1, on_click=on_help))
+        bar.controls.append(ft.ElevatedButton('README', expand=1, on_click=on_help))
 
         self.config_tab.controls.append(bar := ft.Row())
         bar.controls.append(ft.Divider())
@@ -89,7 +91,6 @@ class App:
             default_server.stop()
             default_server.set_base_dir((Path(self.save_ui.value) / 'embedding').as_posix())
             default_server.start()
-            os.startfile(self.save_ui.value)
 
         bar.controls.append(ft.ElevatedButton('Restart', on_click=on_restart_server))
 
@@ -100,53 +101,27 @@ class App:
 
         bar.controls.append(ft.ElevatedButton('Open', on_click=on_open_save))
 
-        def save_api(_):
-            api = {
-                'api_key': self.api_key_ui.value,
-                'api_base': self.api_base_ui.value,
-                'api_type': self.api_type_ui.value,
-                'api_version': self.api_version_ui.value,
-            }
-            for _ in api:
-                if _ in self.config and len(self.config[_]) == 0:
-                    del self.config[_]
-                else:
-                    self.config[_] = api[_]
-            self.save_config()
-            return api
-
         self.config_tab.controls.append(bar := ft.Row())
-        self.api_key_ui = ft.TextField(label='OpenAI API key', value=self.config.get('api_key', openai.api_key),
-                                       expand=1, password=True, on_change=save_api)
-        bar.controls.append(self.api_key_ui)
 
-        self.api_base_ui = ft.TextField(label='OpenAI API base', value=self.config.get('api_base', openai.api_base),
-                                        expand=1, on_change=save_api)
-        bar.controls.append(self.api_base_ui)
-
-        self.api_type_ui = ft.TextField(label='OpenAI API type', value=self.config.get('api_type', openai.api_type),
-                                        expand=1, on_change=save_api)
-        bar.controls.append(self.api_type_ui)
-
-        self.api_version_ui = ft.TextField(label='OpenAI API version', on_change=save_api,
-                                           value=self.config.get('api_version', openai.api_version), expand=1)
-        bar.controls.append(self.api_version_ui)
+        self.kill_service_ui = ft.Checkbox(label='exit service when close', expand=1,
+                                           value=self.config.get('kill_service', False),
+                                           on_change=lambda e: self.save_config(kill_service=e.control.value))
+        bar.controls.append(self.kill_service_ui)
 
         # tab 2
         self.paper_tab = ft.Column()
 
         def on_help(_):
             self.page.snack_bar = ft.SnackBar(ft.TextField(value='''
-1. 先确认当前网络可以访问https://scholar.google.com/
-2. 输入关键词、检索的论文篇数、论文发表的最近年数
-3. 开始下载，论文将保存到存档目录的paper子目录，按发表年份分类
-4. 下载记录位于paper子目录下的<关键词>.json文件，重复下载将跳过已下载失败的条目，如需完全重置请删除该文件
+1. 输入关键词、检索的论文篇数、论文发表的最近年数
+2. 开始下载，论文将保存到存档目录的paper子目录，按发表年份分类
+3. 下载记录位于paper子目录下的<关键词>.json文件，重复下载将跳过已下载失败的条目，如需完全重置请删除该文件
                     ''', read_only=True, multiline=True, border=ft.InputBorder.NONE, color='white'), duration=30000)
             self.page.snack_bar.open = True
             self.page.update()
 
         self.paper_tab.controls.append(bar := ft.Row())
-        bar.controls.append(ft.ElevatedButton('Help', expand=1, on_click=on_help))
+        bar.controls.append(ft.ElevatedButton('README', expand=1, on_click=on_help))
 
         self.paper_tab.controls.append(bar := ft.Row())
         bar.controls.append(ft.Divider())
@@ -190,17 +165,16 @@ class App:
 
         def on_help(_):
             self.page.snack_bar = ft.SnackBar(ft.TextField(value='''
-1. 先确认已安装Java运行时https://www.java.com/download/
-2. 构建论文数据库，该过程将识别paper子目录下所有可识别文件，分拆并使用text-embedding-ada-002模型计算特征向量
-3. 论文数据库保存在存档目录的embedding子目录下，如需完全重置请删除整个目录
-4. 构建过程仅需执行一次，重复执行则跳过已录入的论文段落，避免重复消耗资源
-5. 输入关键词，搜索包含相似段落的论文，按相似程度排序
+1. 构建论文数据库，该过程将识别paper子目录下所有可识别文件，分拆并使用text-embedding-ada-002模型计算特征向量
+2. 论文数据库保存在存档目录的embedding子目录下，如需完全重置请删除整个目录
+3. 构建过程仅需执行一次，重复执行则跳过已录入的论文段落，避免重复消耗资源
+4. 输入关键词，搜索包含相似段落的论文，按相似程度排序
                     ''', read_only=True, multiline=True, border=ft.InputBorder.NONE, color='white'), duration=30000)
             self.page.snack_bar.open = True
             self.page.update()
 
         self.embedding_tab.controls.append(bar := ft.Row())
-        bar.controls.append(ft.ElevatedButton('Help', expand=1, on_click=on_help))
+        bar.controls.append(ft.ElevatedButton('README', expand=1, on_click=on_help))
 
         self.embedding_tab.controls.append(bar := ft.Row())
         bar.controls.append(ft.Divider())
@@ -210,8 +184,8 @@ class App:
                 self.embedding_build_p.kill()
             else:
                 self.embedding_build_in = {
+                    'cache': (Path(self.save_ui.value) / '.cache').as_posix(),
                     'load': (Path(self.save_ui.value) / 'paper').as_posix(),
-                    **save_api(None),
                 }
                 args = (self.embedding_build_in, self.log_q)
                 self.embedding_build_p = Process(target=embedding.build, args=args, daemon=True)
@@ -236,8 +210,8 @@ class App:
             else:
                 self.related_papers_ui.value = ''
                 self.embedding_search_in = {
+                    'cache': (Path(self.save_ui.value) / '.cache').as_posix(),
                     'text': self.embedding_search_input_ui.value,
-                    **save_api(None),
                 }
                 args = (self.embedding_search_in, self.log_q)
                 self.embedding_search_p = Process(target=embedding.search, args=args, daemon=True)
@@ -264,7 +238,7 @@ class App:
             self.page.update()
 
         self.chat_tab.controls.append(bar := ft.Row())
-        bar.controls.append(ft.ElevatedButton('Help', expand=1, on_click=on_help))
+        bar.controls.append(ft.ElevatedButton('README', expand=1, on_click=on_help))
 
         self.chat_tab.controls.append(bar := ft.Row())
         bar.controls.append(ft.Divider())
@@ -325,7 +299,7 @@ class App:
             log: str = self.log_q.get(block=False)
             if isinstance(log, dict):
                 if related_papers := log.get('related papers', None):
-                    related_papers = {f'{_[0]} {_[1]}\n' for _ in related_papers}
+                    related_papers = {f'{_[0]} {_[1]}' for _ in related_papers}
                     related_papers = '\n'.join(related_papers)
                     self.related_papers_ui.value = related_papers
             else:
@@ -343,5 +317,16 @@ class App:
 
 def main():
     freeze_support()
+
+    def about_to_exit():
+        default_server.stop()
+
+        if app.config.get('kill_service', False):
+            for proc in psutil.process_iter():
+                if 'milvus' in proc.name().lower():
+                    proc.kill()
+
+    atexit.register(about_to_exit)
+
     app = App()
     ft.app(target=app)
