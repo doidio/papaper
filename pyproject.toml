@@ -27,10 +27,10 @@ requires = [
     "scholarly",
     "sci-hub",
     "tika",
-    "milvus==2.2.8",
-    "pymilvus==2.2.8",
     "langchain",
     "sentence-transformers",
+    "tiktoken",
+    "faiss-cpu",
 ]
 test_requires = [
     "pytest",

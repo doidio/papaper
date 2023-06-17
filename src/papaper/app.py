@@ -35,6 +35,8 @@ class App:
         else:
             self.config = {}
 
+        self.related_texts = []
+
     def save_config(self, **kwargs):
         self.config.update(kwargs)
         os.makedirs(self.config_path.parent, exist_ok=True)
@@ -81,7 +83,7 @@ class App:
 
         self.config_tab.controls.append(bar := ft.Row())
 
-        _ = Path.home() / 'Desktop' / 'PapaperSave'
+        _ = Path.home() / 'Desktop' / 'papaper' / 'save'
         _ = _.absolute().as_posix()
         self.save_ui = ft.TextField(label='Save', value=self.config.get('save', _), expand=1,
                                     on_change=lambda e: self.save_config(save=e.control.value))
@@ -186,6 +188,7 @@ class App:
                 self.embedding_build_in = {
                     'cache': (Path(self.save_ui.value) / '.cache').as_posix(),
                     'load': (Path(self.save_ui.value) / 'paper').as_posix(),
+                    'embedding': (Path(self.save_ui.value) / 'embedding').as_posix(),
                 }
                 args = (self.embedding_build_in, self.log_q)
                 self.embedding_build_p = Process(target=embedding.build, args=args, daemon=True)
@@ -199,10 +202,10 @@ class App:
         bar.controls.append(ft.Divider())
 
         self.embedding_tab.controls.append(bar := ft.Row())
-        self.embedding_search_input_ui = ft.TextField(
-            label='Content', value=self.config.get('search_input', 'Total hip'), expand=1, multiline=True,
+        self.embedding_query_ui = ft.TextField(
+            label='Content', value=self.config.get('query', 'Total hip'), expand=1, multiline=True,
             on_change=lambda e: self.save_config(search_input=e.control.value))
-        bar.controls.append(self.embedding_search_input_ui)
+        bar.controls.append(self.embedding_query_ui)
 
         def on_embedding_search(_):
             if isinstance(self.embedding_search_p, Process) and self.embedding_search_p.is_alive():
@@ -211,7 +214,8 @@ class App:
                 self.related_papers_ui.value = ''
                 self.embedding_search_in = {
                     'cache': (Path(self.save_ui.value) / '.cache').as_posix(),
-                    'text': self.embedding_search_input_ui.value,
+                    'query': self.embedding_query_ui.value,
+                    'embedding': (Path(self.save_ui.value) / 'embedding').as_posix(),
                 }
                 args = (self.embedding_search_in, self.log_q)
                 self.embedding_search_p = Process(target=embedding.search, args=args, daemon=True)
@@ -222,8 +226,21 @@ class App:
         bar.controls.append(self.embedding_search_ui)
 
         self.embedding_tab.controls.append(bar := ft.Row())
-        self.related_papers_ui = ft.TextField(expand=1, multiline=True, max_lines=10, read_only=True)
+        self.related_papers_ui = ft.TextField(label='Related papers', expand=1, multiline=True, read_only=True)
         bar.controls.append(self.related_papers_ui)
+
+        self.embedding_tab.controls.append(bar := ft.Row())
+        _ = [ft.dropdown.Option(str(_)) for _ in (3000, 6000, 12000)]
+        self.reference_tokens_ui = ft.Dropdown(label='Reference tokens', options=_, value='3000', expand=1)
+        bar.controls.append(self.reference_tokens_ui)
+
+        def on_embedding_to_chat(_):
+            text, n = embedding.text_in_tokens([_[2] for _ in self.related_texts], int(self.reference_tokens_ui.value))
+            self.chat_reference_ui.value = text
+            self.log_q.put(f'[EMBEDDING] reference {n} tokens')
+
+        self.embedding_to_chat_ui = ft.ElevatedButton('Copy to chat', on_click=on_embedding_to_chat)
+        bar.controls.append(self.embedding_to_chat_ui)
 
         # tab 4
         self.chat_tab = ft.Column()
@@ -242,6 +259,10 @@ class App:
 
         self.chat_tab.controls.append(bar := ft.Row())
         bar.controls.append(ft.Divider())
+
+        self.chat_tab.controls.append(bar := ft.Row())
+        self.chat_reference_ui = ft.TextField(label='Reference', expand=1, multiline=True, read_only=True, max_lines=5)
+        bar.controls.append(self.chat_reference_ui)
 
         self.page.add(ft.Tabs(
             selected_index=0,
@@ -298,10 +319,9 @@ class App:
         try:
             log: str = self.log_q.get(block=False)
             if isinstance(log, dict):
-                if related_papers := log.get('related papers', None):
-                    related_papers = {f'{_[0]} {_[1]}' for _ in related_papers}
-                    related_papers = '\n'.join(related_papers)
-                    self.related_papers_ui.value = related_papers
+                if _ := log.get('related papers', None):
+                    self.related_texts = _
+                    self.related_papers_ui.value = '\n'.join({f'{_[0]} {_[1]}' for _ in self.related_texts})
             else:
                 self.log_ui.controls.append(ft.Text(log))
 
@@ -319,9 +339,8 @@ def main():
     freeze_support()
 
     def about_to_exit():
-        default_server.stop()
-
         if app.config.get('kill_service', False):
+            default_server.stop()
             for proc in psutil.process_iter():
                 if 'milvus' in proc.name().lower():
                     proc.kill()
