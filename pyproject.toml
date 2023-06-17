@@ -2,7 +2,7 @@
 [tool.briefcase]
 project_name = "papaper"
 bundle = "com.doidio.papaper"
-version = "1.1.0"
+version = "1.2.0"
 url = "https://github.com/doidio/papaper"
 license = "MIT license"
 author = "doidio"
@@ -22,7 +22,6 @@ test_sources = [
 ]
 
 requires = [
-    "psutil",
     "flet",
     "scholarly",
     "sci-hub",

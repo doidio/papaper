@@ -1,4 +1,3 @@
-import atexit
 import json
 import os
 import threading
@@ -7,8 +6,6 @@ from pathlib import Path
 from queue import Empty
 
 import flet as ft
-import psutil
-from milvus import default_server
 
 from papaper import paper, embedding
 
@@ -45,7 +42,7 @@ class App:
     def __call__(self, page: ft.Page):
         self.page = page
 
-        self.page.title = 'Papaper'
+        self.page.title = 'Papaper 1.1.0'
         self.page.padding = 20
 
         def close_dialog(_):
@@ -68,9 +65,7 @@ class App:
             self.page.snack_bar = ft.SnackBar(ft.TextField(value='''
 1. 先确认当前网络可以访问https://scholar.google.com/
 2. 先确认已安装Java运行时https://www.java.com/download/
-3. 设置Save路径到你的存档目录，其中将会保存下载的论文和用于检索的向量数据库
-4. 数据库启动大约1分钟后才能用于构建和检索，更改Save路径之后必须Restart数据库服务
-5. 论文检索、下载、数据库构建、相似性搜索，都不会消耗付费资源
+3. 设置Save路径到你的存档目录，其中将会保存下载的论文和用于相似性搜索的数据库
                     ''', read_only=True, multiline=True, border=ft.InputBorder.NONE, color='white'), duration=30000)
             self.page.snack_bar.open = True
             self.page.update()
@@ -89,26 +84,10 @@ class App:
                                     on_change=lambda e: self.save_config(save=e.control.value))
         bar.controls.append(self.save_ui)
 
-        def on_restart_server(_):
-            default_server.stop()
-            default_server.set_base_dir((Path(self.save_ui.value) / 'embedding').as_posix())
-            default_server.start()
-
-        bar.controls.append(ft.ElevatedButton('Restart', on_click=on_restart_server))
-
-        on_restart_server(None)
-
         def on_open_save(_):
             os.startfile(self.save_ui.value)
 
         bar.controls.append(ft.ElevatedButton('Open', on_click=on_open_save))
-
-        self.config_tab.controls.append(bar := ft.Row())
-
-        self.kill_service_ui = ft.Checkbox(label='exit service when close', expand=1,
-                                           value=self.config.get('kill_service', False),
-                                           on_change=lambda e: self.save_config(kill_service=e.control.value))
-        bar.controls.append(self.kill_service_ui)
 
         # tab 2
         self.paper_tab = ft.Column()
@@ -116,8 +95,9 @@ class App:
         def on_help(_):
             self.page.snack_bar = ft.SnackBar(ft.TextField(value='''
 1. 输入关键词、检索的论文篇数、论文发表的最近年数
-2. 开始下载，论文将保存到存档目录的paper子目录，按发表年份分类
-3. 下载记录位于paper子目录下的<关键词>.json文件，重复下载将跳过已下载失败的条目，如需完全重置请删除该文件
+2. 开始下载，论文将保存到存档目录的documents子目录，按发表年份分类
+3. 下载记录位于documents子目录下的<关键词>.json文件，重复下载将跳过已下载失败的条目，如需完全重置请删除该文件
+4. 不会消耗付费资源
                     ''', read_only=True, multiline=True, border=ft.InputBorder.NONE, color='white'), duration=30000)
             self.page.snack_bar.open = True
             self.page.update()
@@ -150,7 +130,7 @@ class App:
                 self.paper_p.kill()
             else:
                 self.paper_in = {
-                    'save': (Path(self.save_ui.value) / 'paper').as_posix(),
+                    'save': (Path(self.save_ui.value) / 'documents').as_posix(),
                     'keyword': self.keyword_ui.value,
                     'n_papers': int(self.n_papers_ui.value),
                     'n_years': int(self.n_years_ui.value),
@@ -167,10 +147,10 @@ class App:
 
         def on_help(_):
             self.page.snack_bar = ft.SnackBar(ft.TextField(value='''
-1. 构建论文数据库，该过程将识别paper子目录下所有可识别文件，分拆并使用text-embedding-ada-002模型计算特征向量
-2. 论文数据库保存在存档目录的embedding子目录下，如需完全重置请删除整个目录
-3. 构建过程仅需执行一次，重复执行则跳过已录入的论文段落，避免重复消耗资源
-4. 输入关键词，搜索包含相似段落的论文，按相似程度排序
+1. 构建数据库，该过程将识别documents子目录下所有可识别的文档，文档越多构建耗时越长
+2. 数据库保存在embedding子目录下，每次构建都将覆盖旧文件
+3. 输入查询文本，在数据库中搜索相似的文本段落，按相似度排序
+4. 根据chat模型的token限制，例如GPT3-5 16k，选择合适的资源token数量，一键复制作为引用资料
                     ''', read_only=True, multiline=True, border=ft.InputBorder.NONE, color='white'), duration=30000)
             self.page.snack_bar.open = True
             self.page.update()
@@ -187,7 +167,7 @@ class App:
             else:
                 self.embedding_build_in = {
                     'cache': (Path(self.save_ui.value) / '.cache').as_posix(),
-                    'load': (Path(self.save_ui.value) / 'paper').as_posix(),
+                    'load': (Path(self.save_ui.value) / 'documents').as_posix(),
                     'embedding': (Path(self.save_ui.value) / 'embedding').as_posix(),
                 }
                 args = (self.embedding_build_in, self.log_q)
@@ -203,7 +183,7 @@ class App:
 
         self.embedding_tab.controls.append(bar := ft.Row())
         self.embedding_query_ui = ft.TextField(
-            label='Content', value=self.config.get('query', 'Total hip'), expand=1, multiline=True,
+            label='Query', value=self.config.get('query', 'Total hip'), expand=1, multiline=True,
             on_change=lambda e: self.save_config(search_input=e.control.value))
         bar.controls.append(self.embedding_query_ui)
 
@@ -211,7 +191,7 @@ class App:
             if isinstance(self.embedding_search_p, Process) and self.embedding_search_p.is_alive():
                 self.embedding_search_p.kill()
             else:
-                self.related_papers_ui.value = ''
+                self.related_documents_ui.value = ''
                 self.embedding_search_in = {
                     'cache': (Path(self.save_ui.value) / '.cache').as_posix(),
                     'query': self.embedding_query_ui.value,
@@ -226,17 +206,17 @@ class App:
         bar.controls.append(self.embedding_search_ui)
 
         self.embedding_tab.controls.append(bar := ft.Row())
-        self.related_papers_ui = ft.TextField(label='Related papers', expand=1, multiline=True, read_only=True)
-        bar.controls.append(self.related_papers_ui)
+        self.related_documents_ui = ft.TextField(label='Related documents', expand=1, multiline=True, read_only=True)
+        bar.controls.append(self.related_documents_ui)
 
         self.embedding_tab.controls.append(bar := ft.Row())
-        _ = [ft.dropdown.Option(str(_)) for _ in (3000, 6000, 12000)]
-        self.reference_tokens_ui = ft.Dropdown(label='Reference tokens', options=_, value='3000', expand=1)
+        _ = [ft.dropdown.Option(str(_)) for _ in (2500, 5000, 10000, 20000)]
+        self.reference_tokens_ui = ft.Dropdown(label='Resource tokens', options=_, value='2500', expand=1)
         bar.controls.append(self.reference_tokens_ui)
 
         def on_embedding_to_chat(_):
             text, n = embedding.text_in_tokens([_[2] for _ in self.related_texts], int(self.reference_tokens_ui.value))
-            self.chat_reference_ui.value = text
+            self.chat_resource_ui.value = text
             self.log_q.put(f'[EMBEDDING] reference {n} tokens')
 
         self.embedding_to_chat_ui = ft.ElevatedButton('Copy to chat', on_click=on_embedding_to_chat)
@@ -247,9 +227,7 @@ class App:
 
         def on_help(_):
             self.page.snack_bar = ft.SnackBar(ft.TextField(value='''
-1. 论文数据库的相关段落，可以结合提示词继续调用ChatGPT等同类服务
-2. 提示词例如“请用中文重新表述：<论文段落>”
-3. 注意一篇论文的token用量大约10k，超出GPT-3.5/GPT-4的限制，需分段处理
+1. 修改提示词和问题，查看完整对话，复制到任何大语言聊天应用中使用
                     ''', read_only=True, multiline=True, border=ft.InputBorder.NONE, color='white'), duration=30000)
             self.page.snack_bar.open = True
             self.page.update()
@@ -261,8 +239,48 @@ class App:
         bar.controls.append(ft.Divider())
 
         self.chat_tab.controls.append(bar := ft.Row())
-        self.chat_reference_ui = ft.TextField(label='Reference', expand=1, multiline=True, read_only=True, max_lines=5)
-        bar.controls.append(self.chat_reference_ui)
+        self.chat_question_prompt_ui = ft.TextField(
+            label='Question prompt', expand=1, multiline=True, max_lines=3,
+            value=self.config.get('question_prompt', '你是一名学者，请用中文为我提供帮助。'),
+            on_change=lambda e: self.save_config(question_prompt=e.control.value))
+        bar.controls.append(self.chat_question_prompt_ui)
+
+        self.chat_tab.controls.append(bar := ft.Row())
+        self.chat_question_ui = ft.TextField(
+            label='Question', expand=1, multiline=True, max_lines=3,
+            value=self.config.get('question', '根据资料重新组织一段论述。'),
+            on_change=lambda e: self.save_config(question=e.control.value))
+        bar.controls.append(self.chat_question_ui)
+
+        self.chat_tab.controls.append(bar := ft.Row())
+        self.chat_resource_prompt_ui = ft.TextField(
+            label='Resource prompt',
+            value=self.config.get('resource_prompt', '请充分阅读理解资料，在你的回答中不能体现你事先阅读了这些资料。'
+                                                     '资料如下：'),
+            expand=1, multiline=True, max_lines=3,
+            on_change=lambda e: self.save_config(resource_prompt=e.control.value))
+        bar.controls.append(self.chat_resource_prompt_ui)
+
+        self.chat_tab.controls.append(bar := ft.Row())
+        self.chat_resource_ui = ft.TextField(
+            label='Resource', expand=1, multiline=True, read_only=True, max_lines=3,
+            value=self.config.get('resource', ''),
+            on_change=lambda e: self.save_config(resource=e.control.value))
+        bar.controls.append(self.chat_resource_ui)
+
+        def on_chat_clipboard(_):
+            text = '\n'.join([self.chat_question_prompt_ui.value,
+                              self.chat_question_ui.value,
+                              self.chat_resource_prompt_ui.value,
+                              self.chat_resource_ui.value])
+
+            self.page.dialog.content = ft.TextField(value=text, read_only=True, multiline=True, expand=1)
+            self.page.dialog.open = True
+            self.page.update()
+
+        self.chat_tab.controls.append(bar := ft.Row())
+        self.chat_clipboard_ui = ft.ElevatedButton('View dialog', on_click=on_chat_clipboard)
+        bar.controls.append(self.chat_clipboard_ui)
 
         self.page.add(ft.Tabs(
             selected_index=0,
@@ -309,19 +327,19 @@ class App:
         if isinstance(self.embedding_build_p, Process) and self.embedding_build_p.is_alive():
             self.embedding_build_ui.text = 'Cancel'
         else:
-            self.embedding_build_ui.text = 'Build paper database'
+            self.embedding_build_ui.text = 'Build database'
 
         if isinstance(self.embedding_search_p, Process) and self.embedding_search_p.is_alive():
             self.embedding_search_ui.text = 'Cancel'
         else:
-            self.embedding_search_ui.text = 'Search related papers'
+            self.embedding_search_ui.text = 'Search related documents'
 
         try:
             log: str = self.log_q.get(block=False)
             if isinstance(log, dict):
-                if _ := log.get('related papers', None):
+                if _ := log.get('related documents', None):
                     self.related_texts = _
-                    self.related_papers_ui.value = '\n'.join({f'{_[0]} {_[1]}' for _ in self.related_texts})
+                    self.related_documents_ui.value = '\n'.join({f'{_[0]} {_[1]}' for _ in self.related_texts})
             else:
                 self.log_ui.controls.append(ft.Text(log))
 
@@ -337,15 +355,6 @@ class App:
 
 def main():
     freeze_support()
-
-    def about_to_exit():
-        if app.config.get('kill_service', False):
-            default_server.stop()
-            for proc in psutil.process_iter():
-                if 'milvus' in proc.name().lower():
-                    proc.kill()
-
-    atexit.register(about_to_exit)
 
     app = App()
     ft.app(target=app)
