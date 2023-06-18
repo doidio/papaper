@@ -1,7 +1,8 @@
 import json
 import os
+import sys
 import threading
-from multiprocessing import Queue, Process, freeze_support
+from multiprocessing import Queue, Process
 from pathlib import Path
 from queue import Empty
 
@@ -25,7 +26,7 @@ class App:
         self.embedding_search_p = None
         self.embedding_search_in = None
 
-        self.config_path = Path(os.getenv('APPDATA')) / 'Papaper' / 'config.json'
+        self.config_path = Path(sys.executable).parent.parent / 'config.json'
 
         if self.config_path.exists():
             self.config = json.loads(self.config_path.read_text(encoding='utf-8'))
@@ -42,7 +43,7 @@ class App:
     def __call__(self, page: ft.Page):
         self.page = page
 
-        self.page.title = 'Papaper 1.1.0'
+        self.page.title = 'Papaper 1.2.0'
         self.page.padding = 20
 
         def close_dialog(_):
@@ -78,7 +79,7 @@ class App:
 
         self.config_tab.controls.append(bar := ft.Row())
 
-        _ = Path.home() / 'Desktop' / 'papaper' / 'save'
+        _ = Path(sys.executable).parent.parent / 'save'
         _ = _.absolute().as_posix()
         self.save_ui = ft.TextField(label='Save', value=self.config.get('save', _), expand=1,
                                     on_change=lambda e: self.save_config(save=e.control.value))
@@ -166,7 +167,6 @@ class App:
                 self.embedding_build_p.kill()
             else:
                 self.embedding_build_in = {
-                    'cache': (Path(self.save_ui.value) / '.cache').as_posix(),
                     'load': (Path(self.save_ui.value) / 'documents').as_posix(),
                     'embedding': (Path(self.save_ui.value) / 'embedding').as_posix(),
                 }
@@ -193,7 +193,6 @@ class App:
             else:
                 self.related_documents_ui.value = ''
                 self.embedding_search_in = {
-                    'cache': (Path(self.save_ui.value) / '.cache').as_posix(),
                     'query': self.embedding_query_ui.value,
                     'embedding': (Path(self.save_ui.value) / 'embedding').as_posix(),
                 }
@@ -354,7 +353,5 @@ class App:
 
 
 def main():
-    freeze_support()
-
     app = App()
     ft.app(target=app)

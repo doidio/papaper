@@ -1,5 +1,6 @@
 # import hashlib
 import os
+import sys
 from multiprocessing import Queue
 from pathlib import Path
 
@@ -27,9 +28,9 @@ def parse_file(filename: str):
 
 def build(message: dict, log_q: Queue):
     try:
-        cache = message['cache']
         load = message['load']
         embedding = message['embedding']
+        cache = (Path(sys.executable).parent.parent / 'cache').as_posix()
 
         log_q.put('[EMBEDDING] initialize')
 
@@ -70,9 +71,9 @@ def build(message: dict, log_q: Queue):
 
 def search(message: dict, log_q: Queue):
     try:
-        cache = message['cache']
         query = message['query']
         embedding = message['embedding']
+        cache = (Path(sys.executable).parent.parent / 'cache').as_posix()
 
         log_q.put('[EMBEDDING] load database')
         db = FAISS.load_local(embedding, HuggingFaceEmbeddings(cache_folder=cache))
